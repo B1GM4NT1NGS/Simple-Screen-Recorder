@@ -4,7 +4,7 @@ from ctypes import wintypes
 import json, os, sys, time, threading, subprocess, tempfile, wave, re, math
 from pathlib import Path
 from datetime import datetime
-from export_dialog import ExportDialog
+from export_dialog import ExportDialog, TOOLTIP_STYLE, tooltip_text
 from PySide6.QtCore import Qt, QRect, QPoint, QTimer, QUrl, Signal, QObject, QAbstractNativeEventFilter
 from PySide6.QtGui import QPainter, QColor, QPen, QDesktopServices, QRegion, QIcon, QFont, QPalette, QFontMetrics
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QLabel, QPushButton,
@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QLabel, QPush
     QVBoxLayout, QHBoxLayout, QMenu, QSlider, QListView, QStyledItemDelegate, QStyle)
 
 NAME = 'Simple Screen Recorder'
-VERSION = '1.1.0'
+VERSION = '1.1.1'
 COFFEE = 'https://buymeacoffee.com/bigzz'
 GITHUB = 'https://github.com/B1GM4NT1NGS/Simple-Screen-Recorder'
 CREATE_NO_WINDOW = 0x08000000
@@ -54,7 +54,7 @@ class SelectorCombo(QComboBox):
         desired=max([self.width()]+[metrics.horizontalAdvance(self.itemText(i))+52 for i in range(self.count())])
         available=self.screen().availableGeometry(); width=min(desired,available.width()-24,640)
         self.view().setMinimumWidth(width); super().showPopup()
-        popup=self.view().window(); popup.setStyleSheet('background:#ffffff;color:#243449;border:1px solid #d8e0ea;border-radius:8px;')
+        popup=self.view().window(); popup.setObjectName('recorderDropdownPopup'); popup.setStyleSheet('QWidget#recorderDropdownPopup{background:#ffffff;color:#243449;border:1px solid #d8e0ea;border-radius:8px;}'+TOOLTIP_STYLE)
         palette=self.view().palette(); popup.setPalette(palette); popup.setAutoFillBackground(True)
         popup.resize(max(popup.width(),width),popup.height())
         x=max(available.left()+8,min(self.mapToGlobal(QPoint(0,0)).x(),available.right()-popup.width()-8)); popup.move(x,popup.y())
@@ -323,22 +323,22 @@ class MainWindow(QMainWindow):
         self.config=Path(os.environ.get('APPDATA',str(Path.home()))) / 'SimpleScreenRecorder' / 'settings.json'
         self.frame=CaptureFrame(); self.frame.changed.connect(self.update_frame_label)
         self.frame.stop_requested.connect(self.toggle)
-        self.setStyleSheet('QWidget{background:#f4f6f9;color:#454b54;font:14px "Segoe UI";} QPushButton,QComboBox{background:#f8f9fb;border:1px solid white;border-radius:12px;padding:8px;} QPushButton:hover{background:#e7edf5;} QComboBox QAbstractItemView{background:white;border:1px solid #dce2ea;selection-background-color:#edf1f7;selection-color:#333d4b;padding:6px;} QPushButton#record{background:#ff705b;color:white;font-size:30px;border:6px solid #ffe6df;border-radius:66px;} QPushButton#coffee{background:#ffdd70;border:0;border-radius:9px;font-size:13px;padding:8px 14px;} QLabel#status{color:#737c88;font-size:13px;} QPushButton#footer{border:0;background:white;color:#606976;font-size:14px;padding:10px 12px;}')
+        self.setStyleSheet('QWidget{background:#f4f6f9;color:#454b54;font:14px "Segoe UI";} QPushButton,QComboBox{background:#f8f9fb;border:1px solid white;border-radius:12px;padding:8px;} QPushButton:hover{background:#e7edf5;} QComboBox QAbstractItemView{background:white;border:1px solid #dce2ea;selection-background-color:#edf1f7;selection-color:#333d4b;padding:6px;} QPushButton#record{background:#ff705b;color:white;font-size:30px;border:6px solid #ffe6df;border-radius:66px;} QPushButton#coffee{background:#ffdd70;border:0;border-radius:9px;font-size:13px;padding:8px 14px;} QLabel#status{color:#737c88;font-size:13px;} QPushButton#footer{border:0;background:white;color:#606976;font-size:14px;padding:10px 12px;}'+TOOLTIP_STYLE)
         body=QWidget(); self.setCentralWidget(body); layout=QVBoxLayout(body); layout.setContentsMargins(28,14,28,0); layout.setSpacing(0)
         header=QHBoxLayout(); header.setSpacing(10); header.setContentsMargins(0,0,0,12); name=QLabel(NAME); name.setStyleSheet('color:#707985;font-size:14px;font-weight:600;'); header.addWidget(name); header.addStretch()
         coffee=QPushButton('Buy me a coffee'); coffee.setIcon(QIcon(asset_path('coffee.svg'))); coffee.setObjectName('coffee'); coffee.clicked.connect(lambda:QDesktopServices.openUrl(QUrl(COFFEE))); header.addWidget(coffee)
         self.github=QPushButton('GitHub'); self.github.setIcon(QIcon(asset_path('github.svg'))); self.github.setObjectName('github'); self.github.setStyleSheet('background:#26364b;color:white;border:0;border-radius:9px;font-size:13px;padding:8px 14px;'); self.github.clicked.connect(lambda:QDesktopServices.openUrl(QUrl(GITHUB))); header.addWidget(self.github); layout.addLayout(header)
         row=QHBoxLayout(); row.setSpacing(14); row.setContentsMargins(0,4,0,18)
-        self.mode=SelectorCombo(); self.mode.setAccessibleName('Capture area'); self.mode.setToolTip('Choose a connected screen or a movable recording area')
-        self.audio=SelectorCombo(); self.audio.addItem('Windows default playback device',DEFAULT_AUDIO); self.audio.setItemData(0,'Windows default',Qt.UserRole+1); self.audio.addItem('Mute',None); self.audio.setAccessibleName('Speaker source'); self.audio.setToolTip('Follows the Windows playback device by default; choose another speaker device or Mute')
-        self.mic=SelectorCombo(); self.mic.addItem('Mute',None); self.mic.setAccessibleName('Microphone source'); self.mic.setToolTip('Microphone is muted by default. Choose a Windows input device to record narration.'); self.populate_audio()
+        self.mode=SelectorCombo(); self.mode.setAccessibleName('Capture area'); self.mode.setToolTip(tooltip_text('Choose a connected screen or a movable recording area'))
+        self.audio=SelectorCombo(); self.audio.addItem('Windows default playback device',DEFAULT_AUDIO); self.audio.setItemData(0,'Windows default',Qt.UserRole+1); self.audio.addItem('Mute',None); self.audio.setAccessibleName('Speaker source'); self.audio.setToolTip(tooltip_text('Follows the Windows playback device by default; choose another speaker device or Mute'))
+        self.mic=SelectorCombo(); self.mic.addItem('Mute',None); self.mic.setAccessibleName('Microphone source'); self.mic.setToolTip(tooltip_text('Microphone is muted by default. Choose a Windows input device to record narration.')); self.populate_audio()
         self.format=SelectorCombo(); self.format.addItems(['MP4','MKV','AVI','WebM']); self.format.setAccessibleName('File type')
         for title,icon,combo in [('Capture','capture',self.mode),('Speakers','audio',self.audio),('Mic','mic',self.mic),('Format','video',self.format)]:
             card=QWidget(); card.setFixedSize(152,146); card.setObjectName('captureCard'); card.setStyleSheet('QWidget#captureCard{background:#f8f9fb;border:1px solid white;border-radius:14px;}')
             stack=QVBoxLayout(card); stack.setContentsMargins(12,12,12,10); stack.setSpacing(4)
             label=QLabel(title); label.setAlignment(Qt.AlignCenter); label.setStyleSheet('background:transparent;color:#7a8390;font-size:12px;'); stack.addWidget(label)
             symbol=CardIcon(icon); stack.addWidget(symbol)
-            combo.setStyleSheet('border:0;background:transparent;border-radius:0px;padding:0;'); stack.addWidget(combo); row.addWidget(card)
+            combo.setStyleSheet('QComboBox{border:0;background:transparent;border-radius:0px;padding:0;}'+TOOLTIP_STYLE); stack.addWidget(combo); row.addWidget(card)
         self.volume,self.sound_label=self.volume_column(row,'Speakers'); self.mic_volume,self.mic_sound_label=self.volume_column(row,'Mic'); row.addStretch()
         self.record=QPushButton('Start'); self.record.setObjectName('record'); self.record.setStyleSheet('border-radius:60px;'); self.record.setFixedSize(126,126); self.record.clicked.connect(self.toggle); row.addWidget(self.record,0,Qt.AlignVCenter); layout.addLayout(row)
         info=QHBoxLayout(); info.setContentsMargins(0,0,0,14); info.setSpacing(14); self.folder=QLineEdit(str(Path.home()/'Videos')); self.folder.hide()
@@ -372,7 +372,7 @@ class MainWindow(QMainWindow):
         self.update_space()
     def open_folder(self): QDesktopServices.openUrl(QUrl.fromLocalFile(self.folder.text()))
     def volume_column(self,row,title):
-        column=QVBoxLayout(); column.addStretch(); slider=QSlider(Qt.Vertical); slider.setRange(0,100); slider.setValue(100); slider.setFixedSize(24,72); slider.setAccessibleName(title+' recording volume'); slider.setToolTip(title+' recording volume')
+        column=QVBoxLayout(); column.addStretch(); slider=QSlider(Qt.Vertical); slider.setRange(0,100); slider.setValue(100); slider.setFixedSize(24,72); slider.setAccessibleName(title+' recording volume'); slider.setToolTip(tooltip_text(title+' recording volume'))
         slider.setStyleSheet('QSlider::groove:vertical{background:#dde1e6;width:3px;} QSlider::handle:vertical{background:white;border:1px solid #d4dce6;height:10px;margin:0 -4px;border-radius:5px;} QSlider::handle:vertical:disabled{background:#e7ebf0;} QSlider::sub-page:vertical{background:#ffb4a6;}')
         column.addWidget(slider,0,Qt.AlignHCenter); label=QLabel(title); label.setFixedWidth(54); label.setAlignment(Qt.AlignCenter); label.setStyleSheet('font-size:11px;color:#7a8390;'); column.addWidget(label); column.addStretch(); row.addLayout(column); return slider,label
     def update_audio_controls(self):
@@ -380,7 +380,7 @@ class MainWindow(QMainWindow):
         self.volume.setEnabled(not locked and self.audio.currentData() is not None); self.mic_volume.setEnabled(not locked and self.mic.currentData() is not None)
     def active_recorders(self): return [recorder for recorder in [self.audio_rec,self.mic_rec] if recorder is not None]
     def update_save_location(self):
-        self.folder_button.setText(self.folder.text()); self.folder_button.setToolTip(self.folder.text()); self.folder_button.update()
+        self.folder_button.setText(self.folder.text()); self.folder_button.setToolTip(tooltip_text(self.folder.text())); self.folder_button.update()
     def update_space(self):
         try:
             import shutil
@@ -467,13 +467,13 @@ class MainWindow(QMainWindow):
                         kind='Speakers' if d.get('isLoopbackDevice') else 'Microphone'; combo=self.audio if kind=='Speakers' else self.mic
                         name=d['name'].replace(' [Loopback]','').strip(); key=(kind,name); counts[key]=counts.get(key,0)+1
                         suffix=f' ({counts[key]})' if counts[key]>1 else ''
-                        combo.addItem(name+suffix,i); combo.setItemData(combo.count()-1,kind,Qt.UserRole+1); combo.setItemData(combo.count()-1,d['name'],Qt.ToolTipRole)
+                        combo.addItem(name+suffix,i); combo.setItemData(combo.count()-1,kind,Qt.UserRole+1); combo.setItemData(combo.count()-1,tooltip_text(d['name']),Qt.ToolTipRole)
                         if kind=='Microphone': inputs.append(i)
                 if inputs:
                     self.mic.insertItem(1,'Windows default input device',DEFAULT_MIC); self.mic.setItemData(1,'Windows default',Qt.UserRole+1)
-                else: self.mic.setToolTip('No Windows microphone/input devices are connected. Microphone recording is muted.')
+                else: self.mic.setToolTip(tooltip_text('No Windows microphone/input devices are connected. Microphone recording is muted.'))
         except Exception as e:
-            self.audio.setToolTip('Speaker audio unavailable: '+str(e)); self.mic.setToolTip('Microphone input unavailable: '+str(e))
+            self.audio.setToolTip(tooltip_text('Speaker audio unavailable: '+str(e))); self.mic.setToolTip(tooltip_text('Microphone input unavailable: '+str(e)))
     def refresh_audio_devices(self):
         previous=[(combo.currentData(),combo.currentText()) for combo in [self.audio,self.mic]]
         for combo in [self.audio,self.mic]: combo.blockSignals(True); combo.clear()
@@ -577,10 +577,10 @@ class MainWindow(QMainWindow):
             try:
                 dialog=ExportDialog(path,self.output,self.format.currentText(),ffmpeg_exe(),self); self.export_dialog=dialog; dialog.exec()
                 if dialog.saved_path:
-                    self.last_file=dialog.saved_path; self.status.setText('Saved'); self.status.setToolTip(dialog.saved_path)
+                    self.last_file=dialog.saved_path; self.status.setText('Saved'); self.status.setToolTip(tooltip_text(dialog.saved_path))
                     try: self.scratch.cleanup()
                     except OSError: self.scratch._finalizer.detach()
-                else: self.scratch._finalizer.detach(); self.status.setText('Recording retained'); self.status.setToolTip(path)
+                else: self.scratch._finalizer.detach(); self.status.setText('Recording retained'); self.status.setToolTip(tooltip_text(path))
                 dialog.deleteLater(); self.export_dialog=None
             except Exception as failure:
                 self.scratch._finalizer.detach(); QMessageBox.critical(self,NAME,f'{failure}\nYour recording is safe at:\n{path}')

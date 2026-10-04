@@ -1,5 +1,6 @@
 """Video review, timeline trimming and local export."""
 import math, os, re, shutil, subprocess, tempfile, threading
+from html import escape
 from pathlib import Path
 from PySide6.QtCore import Qt, QRectF, QTimer, QUrl, Signal, QObject, QEvent
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPixmap, QPalette
@@ -8,6 +9,11 @@ from PySide6.QtWidgets import (QDialog, QWidget, QLabel, QPushButton, QComboBox,
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput, QVideoSink
 
 NO_WINDOW=0x08000000
+TOOLTIP_STYLE='QToolTip{background-color:#ffffff;color:#243449;border:1px solid #d8e0ea;border-radius:6px;padding:8px;font:13px "Segoe UI";max-width:320px;}'
+
+def tooltip_text(text):
+    """Rich text lets Qt wrap long hints and device names onto short lines."""
+    return '<qt>'+escape(str(text))+'</qt>'
 
 def video_info(ffmpeg,source):
     result=subprocess.run([ffmpeg,'-hide_banner','-i',str(source)],capture_output=True,creationflags=NO_WINDOW,timeout=30)
@@ -56,7 +62,7 @@ class TrimTimeline(QWidget):
     def __init__(self,duration):
         super().__init__(); self.duration=duration; self.start=0.; self.end=duration; self.position=0.; self.image=QPixmap(); self.drag=None
         self.setFixedHeight(78); self.setMinimumWidth(300); self.setFocusPolicy(Qt.StrongFocus); self.setMouseTracking(True)
-        self.setAccessibleName('Recording trim timeline'); self.setToolTip('Drag the yellow handles to trim. Click between them to scrub.')
+        self.setAccessibleName('Recording trim timeline'); self.setToolTip(tooltip_text('Drag the yellow handles to trim. Click between them to scrub.'))
     def x_for(self,value): return 16+(self.width()-32)*value/self.duration
     def time_for(self,x): return max(0,min(self.duration,(x-16)/(self.width()-32)*self.duration))
     def set_range(self,start,end): self.start=start; self.end=end; self.update()
@@ -112,8 +118,8 @@ class CropOverlay(QWidget):
     changed=Signal()
     def __init__(self,width,height,parent):
         super().__init__(parent); self.source_width=width; self.source_height=height; self.crop=QRectF(0,0,1,1); self.drag=None
-        self.setAttribute(Qt.WA_TranslucentBackground); self.setStyleSheet('background:transparent;'); self.setMouseTracking(True); self.setAccessibleName('Picture crop area')
-        self.setToolTip('Drag inside to move the crop. Drag any edge or corner to resize.')
+        self.setAttribute(Qt.WA_TranslucentBackground); self.setStyleSheet('QWidget{background:transparent;}'+TOOLTIP_STYLE); self.setMouseTracking(True); self.setAccessibleName('Picture crop area')
+        self.setToolTip(tooltip_text('Drag inside to move the crop. Drag any edge or corner to resize.'))
     def video_rect(self):
         scale=min(self.width()/self.source_width,self.height()/self.source_height)
         w=self.source_width*scale; h=self.source_height*scale; return QRectF((self.width()-w)/2,(self.height()-h)/2,w,h)
@@ -161,7 +167,7 @@ class ExportDialog(QDialog):
     def __init__(self,source,suggested,default_format,ffmpeg,parent=None):
         super().__init__(parent); self.source=Path(source); self.suggested=Path(suggested); self.ffmpeg=ffmpeg; self.saved_path=''; self.exporting=False; self.closing=False
         self.duration,self.video_width,self.video_height=video_info(ffmpeg,source); self.setWindowTitle('Review & export'); self.resize(820,750); self.setMinimumSize(740,710)
-        self.setStyleSheet('QWidget{background:#f4f6f9;color:#454b54;font:14px "Segoe UI";} QLabel#title{font-size:23px;font-weight:600;color:#243449;} QLabel#hint{color:#7a8390;font-size:12px;} QPushButton{background:white;border:1px solid #d6dfe9;border-radius:8px;padding:9px 16px;} QPushButton:hover{background:#e7edf5;} QPushButton:checked{background:#ffe6df;border-color:#ff705b;} QPushButton#export{background:#ff705b;color:white;border:0;font-weight:600;} QPushButton#export:disabled{background:#ffb4a7;} QComboBox,QDoubleSpinBox{background:white;border:1px solid #cbd4df;border-radius:6px;padding:7px;} QComboBox QAbstractItemView{background:white;color:#243449;selection-background-color:#edf2f8;selection-color:#243449;padding:6px;} QProgressBar{background:#e4e9f0;border:0;border-radius:4px;max-height:8px;} QProgressBar::chunk{background:#ff705b;border-radius:4px;}')
+        self.setStyleSheet('QWidget{background:#f4f6f9;color:#454b54;font:14px "Segoe UI";} QLabel#title{font-size:23px;font-weight:600;color:#243449;} QLabel#hint{color:#7a8390;font-size:12px;} QPushButton{background:white;border:1px solid #d6dfe9;border-radius:8px;padding:9px 16px;} QPushButton:hover{background:#e7edf5;} QPushButton:checked{background:#ffe6df;border-color:#ff705b;} QPushButton#export{background:#ff705b;color:white;border:0;font-weight:600;} QPushButton#export:disabled{background:#ffb4a7;} QComboBox,QDoubleSpinBox{background:white;border:1px solid #cbd4df;border-radius:6px;padding:7px;} QComboBox QAbstractItemView{background:white;color:#243449;selection-background-color:#edf2f8;selection-color:#243449;padding:6px;} QProgressBar{background:#e4e9f0;border:0;border-radius:4px;max-height:8px;} QProgressBar::chunk{background:#ff705b;border-radius:4px;}'+TOOLTIP_STYLE)
         layout=QVBoxLayout(self); layout.setContentsMargins(24,20,24,20); layout.setSpacing(12)
         title=QLabel('Review your recording'); title.setObjectName('title'); layout.addWidget(title)
         hint=QLabel('Drag the yellow handles to choose the part you want to keep.'); hint.setObjectName('hint'); layout.addWidget(hint)
@@ -239,7 +245,7 @@ class ExportDialog(QDialog):
     def end_changed(self,value): self.trim_changed(self.timeline.start,max(value,self.timeline.start+min(.1,self.duration)),'end')
     def target_path(self): return self.suggested.with_suffix('.'+self.format.currentText().lower())
     def update_location(self):
-        path=str(self.target_path()); font=self.location.fontMetrics(); self.location.setText(font.elidedText(path,Qt.ElideMiddle,max(200,self.width()-240))); self.location.setToolTip(path)
+        path=str(self.target_path()); font=self.location.fontMetrics(); self.location.setText(font.elidedText(path,Qt.ElideMiddle,max(200,self.width()-240))); self.location.setToolTip(tooltip_text(path))
     def browse(self):
         path,_=QFileDialog.getSaveFileName(self,'Export video',str(self.target_path()),'Video (*.'+self.format.currentText().lower()+')')
         if path: self.suggested=Path(path); self.update_location()
