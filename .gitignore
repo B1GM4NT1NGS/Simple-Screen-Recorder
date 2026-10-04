@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+build/
+dist/
+*.spec
+*.exe
+*.mp4
+*.mkv
+*.avi
+*.webm
+*.wav
