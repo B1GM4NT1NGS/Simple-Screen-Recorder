@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QLabel, QPush
     QVBoxLayout, QHBoxLayout, QMenu, QSlider, QListView, QStyledItemDelegate, QStyle)
 
 NAME = 'Simple Screen Recorder'
-VERSION = '1.1.1'
+VERSION = '1.1.2'
 COFFEE = 'https://buymeacoffee.com/bigzz'
 GITHUB = 'https://github.com/B1GM4NT1NGS/Simple-Screen-Recorder'
 CREATE_NO_WINDOW = 0x08000000
@@ -316,7 +316,7 @@ class SaveLocationButton(QPushButton):
 
 class MainWindow(QMainWindow):
     def __init__(self):
-        super().__init__(); self.setWindowTitle(NAME); self.setWindowIcon(QIcon(asset_path('recorder.ico'))); self.setFixedSize(1000,340)
+        super().__init__(); self.setWindowTitle(NAME); self.setWindowIcon(QIcon(asset_path('recorder.png'))); self.setFixedSize(1000,340)
         self.proc=None; self.audio_rec=None; self.mic_rec=None; self.region=None; self.pending=False; self.busy=False; self.last_file=None
         self.launch_scheduled=False; self.countdown=CountdownOverlay(); self.extra_countdowns=[]; self.capture_screens=None; self.screen_labels=[]; self.screen_connections=[]
         self.events=Events(); self.events.finished.connect(self.completed)
@@ -613,7 +613,7 @@ def main():
     try: ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('SimpleScreenRecorder.Desktop')
     except Exception: pass
     app=QApplication(sys.argv); app.setApplicationName(NAME); app.setApplicationVersion(VERSION)
-    app.setWindowIcon(QIcon(asset_path('recorder.ico')))
+    app.setWindowIcon(QIcon(asset_path('recorder.png')))
     window=MainWindow(); window.show(); sys.exit(app.exec())
 
 if __name__=='__main__': main()

@@ -23,7 +23,7 @@ A compact, local Windows screen recorder with a movable recording frame. Ideal f
 
 ## Download
 
-Download **Simple-Screen-Recorder.exe** from the [latest release](https://github.com/B1GM4NT1NGS/Simple-Screen-Recorder/releases/latest). No installation or Python is required.
+Download **Simple-Screen-Recorder-1.1.2.exe** from the [latest release](https://github.com/B1GM4NT1NGS/Simple-Screen-Recorder/releases/latest). No installation or Python is required.
 
 ## Run from source
 
