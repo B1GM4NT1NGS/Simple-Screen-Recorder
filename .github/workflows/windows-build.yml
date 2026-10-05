@@ -1,0 +1,49 @@
+name: Windows build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '**.py'
+      - 'assets/**'
+      - 'requirements.txt'
+      - '.github/workflows/windows-build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install build dependencies
+        run: python -m pip install -r requirements.txt pyinstaller==6.22.3
+      - name: Run automated checks
+        run: python -m unittest discover -s tests
+      - name: Build standalone Windows executable
+        run: python build_portable.py
+      - name: Name the build artifact
+        shell: pwsh
+        run: |
+          $releaseVersion = python -c "import ast,pathlib; tree=ast.parse(pathlib.Path('simple_screen_recorder.py').read_text(encoding='utf-8')); print(next(ast.literal_eval(n.value) for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='VERSION' for t in n.targets)))"
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to read application version.' }
+          Copy-Item -LiteralPath 'dist\Simple Screen Recorder.exe' -Destination "dist\Simple-Screen-Recorder-$releaseVersion.exe"
+      - name: Upload unsigned executable
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: recorder-windows-unsigned
+          path: dist/Simple-Screen-Recorder-*.exe
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30
