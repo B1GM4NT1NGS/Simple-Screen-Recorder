@@ -59,9 +59,9 @@ python -m unittest discover -s tests
 
 ## Code signing policy
 
-The project is applying to the SignPath Foundation for free open-source signing. Approval is pending and current downloads remain unsigned. See the [code signing policy](SIGNING.md) for the planned SignPath provider, maintainer roles and build verification, and the [privacy policy](PRIVACY.md) for local recording and data handling.
+Current downloads are unsigned and no code signing provider is configured. See the [code signing policy](SIGNING.md) for maintainer roles and build verification, and the [privacy policy](PRIVACY.md) for local recording and data handling.
 
-The [Windows build workflow](.github/workflows/windows-build.yml) runs checks and builds unsigned executable artifacts on GitHub-hosted runners. Production signing will be enabled only after approval and configuration.
+The [Windows build workflow](.github/workflows/windows-build.yml) runs checks and builds unsigned executable artifacts on GitHub-hosted runners.
 
 ## Support
 
