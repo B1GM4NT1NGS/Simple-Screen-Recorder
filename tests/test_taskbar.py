@@ -53,6 +53,6 @@ class TaskbarTests(unittest.TestCase):
         self.identity=TaskbarIdentity(self.hwnd,self.icon,sys.executable,script)
         properties=read_properties(self.hwnd)
         self.assertEqual(properties[3],str(self.icon)+',0')
-        self.assertIn(str(script),properties[2]); self.assertEqual(properties[5],APP_ID)
+        self.assertIn(str(script.resolve()),properties[2]); self.assertEqual(properties[5],APP_ID)
 
 if __name__=='__main__':unittest.main()
