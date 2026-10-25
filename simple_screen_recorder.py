@@ -5,6 +5,7 @@ import json, os, sys, time, threading, subprocess, tempfile, wave, re, math
 from pathlib import Path
 from datetime import datetime
 from export_dialog import ExportDialog, TOOLTIP_STYLE, tooltip_text
+from windows_identity import TaskbarIdentity, set_process_identity
 from PySide6.QtCore import Qt, QRect, QPoint, QTimer, QUrl, Signal, QObject, QAbstractNativeEventFilter
 from PySide6.QtGui import QPainter, QColor, QPen, QDesktopServices, QRegion, QIcon, QFont, QPalette, QFontMetrics
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QLabel, QPushButton,
@@ -12,7 +13,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QLabel, QPush
     QVBoxLayout, QHBoxLayout, QMenu, QSlider, QListView, QStyledItemDelegate, QStyle)
 
 NAME = 'Simple Screen Recorder'
-VERSION = '1.1.2'
+VERSION = '1.1.3'
 COFFEE = 'https://buymeacoffee.com/bigzz'
 GITHUB = 'https://github.com/B1GM4NT1NGS/Simple-Screen-Recorder'
 CREATE_NO_WINDOW = 0x08000000
@@ -317,6 +318,7 @@ class SaveLocationButton(QPushButton):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__(); self.setWindowTitle(NAME); self.setWindowIcon(QIcon(asset_path('recorder.png'))); self.setFixedSize(1000,340)
+        self._native_taskbar=None; self.taskbar_icon_error=None
         self.proc=None; self.audio_rec=None; self.mic_rec=None; self.region=None; self.pending=False; self.busy=False; self.last_file=None
         self.launch_scheduled=False; self.countdown=CountdownOverlay(); self.extra_countdowns=[]; self.capture_screens=None; self.screen_labels=[]; self.screen_connections=[]
         self.events=Events(); self.events.finished.connect(self.completed)
@@ -370,6 +372,15 @@ class MainWindow(QMainWindow):
         self.hotkey_filter=HotkeyFilter(self); QApplication.instance().installNativeEventFilter(self.hotkey_filter)
         if not self.hotkey: self.status.setText('Use Stop button')
         self.update_space()
+    def showEvent(self,event):
+        super().showEvent(event)
+        if QApplication.platformName()=='windows' and self._native_taskbar is None:
+            try:
+                script=None if getattr(sys,'frozen',False) else Path(__file__).resolve()
+                self._native_taskbar=TaskbarIdentity(int(self.winId()),asset_path('recorder.ico'),sys.executable,script)
+                self.destroyed.connect(self._native_taskbar.close)
+                self.taskbar_icon_error=None
+            except OSError as error: self.taskbar_icon_error=str(error)
     def open_folder(self): QDesktopServices.openUrl(QUrl.fromLocalFile(self.folder.text()))
     def volume_column(self,row,title):
         column=QVBoxLayout(); column.addStretch(); slider=QSlider(Qt.Vertical); slider.setRange(0,100); slider.setValue(100); slider.setFixedSize(24,72); slider.setAccessibleName(title+' recording volume'); slider.setToolTip(tooltip_text(title+' recording volume'))
@@ -610,7 +621,7 @@ def main():
     os.environ['QT_SCALE_FACTOR']='1'
     try: ctypes.windll.user32.SetProcessDPIAware()
     except Exception: pass
-    try: ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('SimpleScreenRecorder.Desktop')
+    try: set_process_identity()
     except Exception: pass
     app=QApplication(sys.argv); app.setApplicationName(NAME); app.setApplicationVersion(VERSION)
     app.setWindowIcon(QIcon(asset_path('recorder.png')))
