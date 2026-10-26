@@ -5,8 +5,10 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from PySide6.QtWidgets import QApplication, QWidget
 from PySide6.QtCore import Qt, QPoint
 from PySide6.QtTest import QTest
+from PySide6.QtGui import QImageReader
+from unittest.mock import patch
 from simple_screen_recorder import ffmpeg_exe
-from export_dialog import export_args, write_export, video_info, TrimTimeline, CropOverlay
+from export_dialog import export_args, write_export, video_info, TrimTimeline, CropOverlay, ExportDialog
 
 class ExportTests(unittest.TestCase):
     @classmethod
@@ -25,9 +27,41 @@ class ExportTests(unittest.TestCase):
             audio=subprocess.run([self.ffmpeg,'-v','error','-i',str(target),'-map','0:a:0','-f','s16le','-'],capture_output=True,creationflags=0x08000000,check=True)
             self.assertGreater(len(audio.stdout),10000)
     def test_existing_file_is_preserved(self):
-        target=Path(self.folder.name)/'existing.mp4'; target.write_bytes(b'preserve this')
-        with self.assertRaises(FileExistsError): write_export(self.ffmpeg,self.source,target,0,4)
-        self.assertEqual(target.read_bytes(),b'preserve this')
+        for ext in ['mp4','gif']:
+            target=Path(self.folder.name)/('existing.'+ext); target.write_bytes(b'preserve this')
+            with self.assertRaises(FileExistsError): write_export(self.ffmpeg,self.source,target,0,4)
+            self.assertEqual(target.read_bytes(),b'preserve this')
+    def test_gif_is_animated_looping_trimmed_cropped_and_silent(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source=Path(folder)/'animated.mp4'; target=Path(folder)/'recording.gif'
+            subprocess.run([self.ffmpeg,'-v','error','-f','lavfi','-i','testsrc2=size=160x90:rate=30:duration=3','-f','lavfi','-i','sine=frequency=440:duration=3','-c:v','libx264','-c:a','aac','-shortest',str(source)],capture_output=True,check=True,creationflags=0x08000000)
+            write_export(self.ffmpeg,source,target,.3,1.5,(11,7,101,65))
+            duration,w,h=video_info(self.ffmpeg,target)
+            self.assertAlmostEqual(duration,1.2,delta=.09); self.assertEqual((w,h),(101,65))
+            reader=QImageReader(str(target)); self.assertTrue(reader.supportsAnimation()); self.assertEqual(reader.loopCount(),-1)
+            frames=[]
+            while reader.canRead():
+                frame=reader.read(); self.assertFalse(frame.isNull()); frames.append(frame)
+            del reader
+            self.assertEqual(len(frames),18); self.assertNotEqual(frames[0],frames[-1])
+            info=subprocess.run([self.ffmpeg,'-hide_banner','-i',str(target)],capture_output=True,creationflags=0x08000000)
+            self.assertNotIn(b'Audio:',info.stderr)
+            self.assertEqual(list(Path(folder).glob('.recording-export-*')),[])
+    def test_gif_crop_keeps_the_selected_picture_content(self):
+        target=Path(self.folder.name)/'blue-crop.gif'
+        write_export(self.ffmpeg,self.source,target,.5,1,(170,30,100,100))
+        image=QImageReader(str(target)).read(); self.assertFalse(image.isNull()); color=image.pixelColor(50,50)
+        self.assertLess(color.red(),30); self.assertLess(color.green(),30); self.assertGreater(color.blue(),200)
+    def test_export_dialog_switches_between_gif_and_mp4(self):
+        with patch.object(ExportDialog,'make_thumbnails'):
+            dialog=ExportDialog(self.source,Path(self.folder.name)/'chosen.mp4','GIF',self.ffmpeg)
+        try:
+            self.assertEqual(dialog.target_path().suffix,'.gif'); self.assertTrue(dialog.audio_output.isMuted())
+            self.assertEqual(dialog.export.text(),'Export GIF'); self.assertIn('silent animation',dialog.message.text())
+            dialog.format.setCurrentText('MP4')
+            self.assertEqual(dialog.target_path().suffix,'.mp4'); self.assertFalse(dialog.audio_output.isMuted())
+            self.assertEqual(dialog.export.text(),'Export video')
+        finally: dialog.release_player(); dialog.accept()
     def test_invalid_trim_and_crop_rejected(self):
         with self.assertRaises(ValueError): export_args(self.ffmpeg,self.source,'a.mp4',2,1,'mp4')
         with self.assertRaises(ValueError): export_args(self.ffmpeg,self.source,'a.mp4',0,1,'mp4',(-1,0,100,100))

@@ -25,16 +25,26 @@ def video_info(ffmpeg,source):
 
 def video_duration(ffmpeg,source): return video_info(ffmpeg,source)[0]
 
-def export_args(ffmpeg,source,target,start,end,ext,crop=None):
+EXPORT_FORMATS=['MP4','GIF','MKV','AVI','WebM']
+
+def crop_filters(crop):
+    if not crop: return []
+    x,y,w,h=crop
+    if x<0 or y<0 or w<16 or h<16: raise ValueError('Choose a crop at least 16 pixels wide and high.')
+    return [f'crop={w}:{h}:{x}:{y}:exact=1']
+
+def export_args(ffmpeg,source,target,start,end,ext,crop=None,palette=None):
     if start<0 or end<=start: raise ValueError('Choose a trim range with an end after its start.')
-    if ext not in ['mp4','mkv','avi','webm']: raise ValueError('Choose MP4, MKV, AVI or WebM.')
+    if ext not in [name.lower() for name in EXPORT_FORMATS]: raise ValueError('Choose MP4, GIF, MKV, AVI or WebM.')
+    filters=crop_filters(crop)
+    if ext=='gif':
+        if palette is None: raise ValueError('A GIF colour palette is required.')
+        filters+=['setpts=PTS-STARTPTS','fps=15']
+        graph='[0:v]'+','.join(filters)+'[frames];[frames][1:v]paletteuse=dither=sierra2_4a:diff_mode=rectangle[out]'
+        return [ffmpeg,'-hide_banner','-loglevel','error','-n','-ss',f'{start:.6f}','-t',f'{end-start:.6f}','-i',str(source),
+            '-i',str(palette),'-filter_complex',graph,'-map','[out]','-an','-loop','0',str(target)]
     video=['-c:v','libvpx-vp9','-deadline','realtime','-cpu-used','6','-crf','31','-b:v','0'] if ext=='webm' else ['-c:v','libx264','-preset','fast','-crf','20','-pix_fmt','yuv420p']
     audio='libopus' if ext=='webm' else ('pcm_s16le' if ext=='avi' else 'aac')
-    filters=[]
-    if crop:
-        x,y,w,h=crop
-        if x<0 or y<0 or w<16 or h<16: raise ValueError('Choose a crop at least 16 pixels wide and high.')
-        filters.append(f'crop={w}:{h}:{x}:{y}:exact=1')
     filters.append('pad=ceil(iw/2)*2:ceil(ih/2)*2')
     return [ffmpeg,'-hide_banner','-loglevel','error','-n','-ss',f'{start:.6f}','-i',str(source),'-t',f'{end-start:.6f}',
         '-map','0:v:0','-map','0:a:0?','-vf',','.join(filters),*video,'-c:a',audio,*(['-movflags','+faststart'] if ext=='mp4' else []),str(target)]
@@ -44,7 +54,15 @@ def write_export(ffmpeg,source,target,start,end,crop=None):
     if target.exists(): raise FileExistsError('A file with this name already exists. Choose a new name.')
     with tempfile.TemporaryDirectory(prefix='.recording-export-',dir=target.parent) as folder:
         partial=Path(folder)/('video'+target.suffix)
-        command=export_args(ffmpeg,source,partial,start,end,target.suffix[1:].lower(),crop)
+        ext=target.suffix[1:].lower(); palette=Path(folder)/'palette.png' if ext=='gif' else None
+        command=export_args(ffmpeg,source,partial,start,end,ext,crop,palette)
+        if palette:
+            # Two passes avoid holding a whole recording in memory while finding its palette.
+            filters=crop_filters(crop)+['setpts=PTS-STARTPTS','fps=15','palettegen=stats_mode=diff:reserve_transparent=0']
+            generate=[ffmpeg,'-hide_banner','-loglevel','error','-n','-ss',f'{start:.6f}','-t',f'{end-start:.6f}','-i',str(source),
+                '-vf',','.join(filters),'-frames:v','1','-update','1',str(palette)]
+            result=subprocess.run(generate,capture_output=True,creationflags=NO_WINDOW)
+            if result.returncode: raise RuntimeError(result.stderr.decode(errors='replace')[-1800:] or 'GIF palette generation failed.')
         if crop is None and start==0 and target.suffix.lower() in ['.mp4','.mkv'] and end>=video_duration(ffmpeg,source)-.01:
             command=[ffmpeg,'-v','error','-n','-i',str(source),'-map','0:v:0','-map','0:a:0?','-c','copy',*(['-movflags','+faststart'] if target.suffix.lower()=='.mp4' else []),str(partial)]
         result=subprocess.run(command,capture_output=True,creationflags=NO_WINDOW)
@@ -184,7 +202,7 @@ class ExportDialog(QDialog):
         self.crop_hint=QLabel(f'{self.video_width} × {self.video_height}'); self.crop_hint.setObjectName('hint'); crop_row.addWidget(self.crop_hint); crop_row.addStretch(); layout.addLayout(crop_row); self.crop.changed.connect(self.update_crop_hint)
         trim=QHBoxLayout(); trim.addWidget(QLabel('Start')); self.start_time=QDoubleSpinBox(); self.start_time.setDecimals(2); self.start_time.setRange(0,max(0,self.duration-.1)); self.start_time.setSuffix(' s'); self.start_time.setAccessibleName('Trim start'); trim.addWidget(self.start_time)
         trim.addSpacing(14); trim.addWidget(QLabel('End')); self.end_time=QDoubleSpinBox(); self.end_time.setDecimals(2); self.end_time.setRange(min(.1,self.duration),self.duration); self.end_time.setValue(self.duration); self.end_time.setSuffix(' s'); self.end_time.setAccessibleName('Trim end'); trim.addWidget(self.end_time); trim.addStretch()
-        trim.addWidget(QLabel('Format')); self.format=QComboBox(); self.format.addItems(['MP4','MKV','AVI','WebM']); self.format.setCurrentText(default_format); self.format.setAccessibleName('Export format'); trim.addWidget(self.format); layout.addLayout(trim)
+        trim.addWidget(QLabel('Format')); self.format=QComboBox(); self.format.addItems(EXPORT_FORMATS); self.format.setCurrentText(default_format); self.format.setAccessibleName('Export format'); trim.addWidget(self.format); layout.addLayout(trim)
         view=QListView(); palette=view.palette()
         for role,color in [(QPalette.Base,'#ffffff'),(QPalette.Window,'#ffffff'),(QPalette.Text,'#243449'),(QPalette.WindowText,'#243449'),(QPalette.Highlight,'#edf2f8'),(QPalette.HighlightedText,'#243449')]: palette.setColor(role,QColor(color))
         view.setPalette(palette); self.format.setView(view)
@@ -195,7 +213,7 @@ class ExportDialog(QDialog):
         self.events=ExportEvents(); self.events.thumbnails.connect(self.set_thumbnails); self.events.finished.connect(self.export_finished); self.thumbnail_cancel=threading.Event()
         self.timeline.range_changed.connect(self.trim_changed); self.timeline.seek_requested.connect(self.seek); self.start_time.valueChanged.connect(self.start_changed); self.end_time.valueChanged.connect(self.end_changed)
         self.player.positionChanged.connect(self.position_changed); self.player.playbackStateChanged.connect(lambda state:self.play.setText('Pause' if state==QMediaPlayer.PlayingState else 'Play')); self.player.errorOccurred.connect(self.preview_error)
-        self.format.currentTextChanged.connect(self.update_location); self.update_location(); self.trim_changed(0,self.duration,'start')
+        self.format.currentTextChanged.connect(self.format_changed); self.format_changed(); self.trim_changed(0,self.duration,'start')
         threading.Thread(target=self.make_thumbnails,daemon=True).start()
         QTimer.singleShot(200,self.prime_preview)
     def prime_preview(self):
@@ -244,10 +262,16 @@ class ExportDialog(QDialog):
     def start_changed(self,value): self.trim_changed(min(value,self.timeline.end-min(.1,self.duration)),self.timeline.end,'start')
     def end_changed(self,value): self.trim_changed(self.timeline.start,max(value,self.timeline.start+min(.1,self.duration)),'end')
     def target_path(self): return self.suggested.with_suffix('.'+self.format.currentText().lower())
+    def format_changed(self):
+        gif=self.format.currentText()=='GIF'; self.audio_output.setMuted(gif)
+        self.export.setText('Export GIF' if gif else 'Export video')
+        self.message.setText(('GIF saves a silent animation at 15 FPS. ' if gif else '')+'Closing this window keeps the full recording as MP4.')
+        self.update_location()
     def update_location(self):
         path=str(self.target_path()); font=self.location.fontMetrics(); self.location.setText(font.elidedText(path,Qt.ElideMiddle,max(200,self.width()-240))); self.location.setToolTip(tooltip_text(path))
     def browse(self):
-        path,_=QFileDialog.getSaveFileName(self,'Export video',str(self.target_path()),'Video (*.'+self.format.currentText().lower()+')')
+        gif=self.format.currentText()=='GIF'
+        path,_=QFileDialog.getSaveFileName(self,'Export GIF' if gif else 'Export video',str(self.target_path()),('GIF image' if gif else 'Video')+' (*.'+self.format.currentText().lower()+')')
         if path: self.suggested=Path(path); self.update_location()
     def begin_export(self):
         target=self.target_path()

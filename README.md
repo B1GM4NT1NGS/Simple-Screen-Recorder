@@ -11,19 +11,19 @@ A compact, local Windows screen recorder with a movable recording frame. Ideal f
 - **Record all screens** saves one combined video preserving the positions, sizes and offsets in Windows display settings. Gaps in the layout appear black. Each monitor shows its own countdown before capture begins.
 - **Area** shows a floating recording frame. The frame is a thin red dashed border with a central four-way move handle. Drag anywhere inside it to move between monitors; drag edges or corners to resize it.
 - Before recording, the whole clear centre can be dragged to position the frame. During recording, it passes mouse clicks through to your application. Only the area inside the frame is recorded; the border remains outside it. The central instruction and move handle disappear before recording starts.
-- MP4, MKV, AVI or WebM output at 30 FPS.
+- MP4, MKV, AVI or WebM video output at 30 FPS, or a silent, looping animated GIF at 15 FPS. Choose GIF or MP4 in the recorder's Format selector, or change the format in the export window after recording.
 - **Speakers** defaults to the current Windows playback device, resolved afresh for each recording. **Mic** defaults to **Mute** and lists connected Windows input devices. Record speakers and a microphone together, either one alone, or a silent video. Each has its own recording-volume slider. The device lists refresh when opened.
 - Click the bordered path beside **Save Location:** to choose a save location. **Media** opens that folder.
 - A large 3-2-1 countdown appears over the selected capture area, then disappears before recording starts. The toolbar minimises while recording, and the frame locks to keep capture dimensions consistent.
 - Stop with **Ctrl + Shift + F10**, the recorder's Stop button.
-- After **Stop**, a themed **Review & export** window opens with video playback and a filmstrip timeline. Drag the yellow handles to trim the beginning/end, or use the exact start/end times. Enable **Crop picture** to resize or move a crop box over the preview. Choose MP4, MKV, AVI or WebM and click **Export video**.
-- **Keep original**, or closing the export window, saves the full recording as MP4. Exports preserve audio. Existing videos are never overwritten.
+- After **Stop**, a themed **Review & export** window opens with video playback and a filmstrip timeline. Drag the yellow handles to trim the beginning/end, or use the exact start/end times. Enable **Crop picture** to resize or move a crop box over the preview. Choose MP4, GIF, MKV, AVI or WebM and click **Export video** or **Export GIF**. GIF exports keep the selected picture dimensions and have no audio; their preview is muted. MP4 exports preserve sound.
+- **Keep original**, or closing the export window, saves the full recording as MP4, including its recorded audio. Video exports preserve audio; GIF exports are silent. Existing files are never overwritten.
 - Timestamped filenames and elapsed recording time.
 - Temporary footage is retained for recovery if final saving fails.
 
 ## Download
 
-Download **Simple-Screen-Recorder-1.1.3.exe** from the [latest release](https://github.com/B1GM4NT1NGS/Simple-Screen-Recorder/releases/latest). No installation or Python is required.
+Download **Simple-Screen-Recorder-1.1.4.exe** from the [latest release](https://github.com/B1GM4NT1NGS/Simple-Screen-Recorder/releases/latest). No installation or Python is required.
 
 ## Run from source
 

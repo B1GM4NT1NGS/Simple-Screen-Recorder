@@ -4,7 +4,7 @@ from ctypes import wintypes
 import json, os, sys, time, threading, subprocess, tempfile, wave, re, math
 from pathlib import Path
 from datetime import datetime
-from export_dialog import ExportDialog, TOOLTIP_STYLE, tooltip_text
+from export_dialog import ExportDialog, EXPORT_FORMATS, TOOLTIP_STYLE, tooltip_text
 from windows_identity import TaskbarIdentity, set_process_identity
 from PySide6.QtCore import Qt, QRect, QPoint, QTimer, QUrl, Signal, QObject, QAbstractNativeEventFilter
 from PySide6.QtGui import QPainter, QColor, QPen, QDesktopServices, QRegion, QIcon, QFont, QPalette, QFontMetrics
@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QLabel, QPush
     QVBoxLayout, QHBoxLayout, QMenu, QSlider, QListView, QStyledItemDelegate, QStyle)
 
 NAME = 'Simple Screen Recorder'
-VERSION = '1.1.3'
+VERSION = '1.1.4'
 COFFEE = 'https://buymeacoffee.com/bigzz'
 GITHUB = 'https://github.com/B1GM4NT1NGS/Simple-Screen-Recorder'
 CREATE_NO_WINDOW = 0x08000000
@@ -334,7 +334,7 @@ class MainWindow(QMainWindow):
         self.mode=SelectorCombo(); self.mode.setAccessibleName('Capture area'); self.mode.setToolTip(tooltip_text('Choose a connected screen or a movable recording area'))
         self.audio=SelectorCombo(); self.audio.addItem('Windows default playback device',DEFAULT_AUDIO); self.audio.setItemData(0,'Windows default',Qt.UserRole+1); self.audio.addItem('Mute',None); self.audio.setAccessibleName('Speaker source'); self.audio.setToolTip(tooltip_text('Follows the Windows playback device by default; choose another speaker device or Mute'))
         self.mic=SelectorCombo(); self.mic.addItem('Mute',None); self.mic.setAccessibleName('Microphone source'); self.mic.setToolTip(tooltip_text('Microphone is muted by default. Choose a Windows input device to record narration.')); self.populate_audio()
-        self.format=SelectorCombo(); self.format.addItems(['MP4','MKV','AVI','WebM']); self.format.setAccessibleName('File type')
+        self.format=SelectorCombo(); self.format.addItems(EXPORT_FORMATS); self.format.setAccessibleName('File type'); self.format.setToolTip(tooltip_text('Choose MP4 for video with sound, or GIF for a silent animated image.'))
         for title,icon,combo in [('Capture','capture',self.mode),('Speakers','audio',self.audio),('Mic','mic',self.mic),('Format','video',self.format)]:
             card=QWidget(); card.setFixedSize(152,146); card.setObjectName('captureCard'); card.setStyleSheet('QWidget#captureCard{background:#f8f9fb;border:1px solid white;border-radius:14px;}')
             stack=QVBoxLayout(card); stack.setContentsMargins(12,12,12,10); stack.setSpacing(4)
@@ -402,7 +402,7 @@ class MainWindow(QMainWindow):
         path=QFileDialog.getExistingDirectory(self,'Choose recording folder',self.folder.text())
         if path: self.folder.setText(path); self.update_save_location(); self.update_space()
     def help(self):
-        QMessageBox.information(self,NAME,'Choose Full Screen 1, Full Screen 2, etc. to record that monitor, or Area for a floating recording frame. Choose Record all screens to save one video matching the Windows monitor layout. Gaps between monitors appear black. With one monitor, choose Full Screen. The screen numbers appear at the top of each monitor before recording. Click the bordered Save Location field to choose where recordings are saved.\n\nDrag anywhere inside the frame to move it. Drag any edge or corner to resize it. Move it to any monitor. The clear inside area is recorded. The border stays outside it, and the central guide disappears before recording.\n\nClick Start for a large 3-2-1 countdown over the capture area. The frame locks while recording. Stop with Ctrl + Shift + F10, the recorder Stop button.\n\nSpeakers follows the Windows playback device by default. The separate Mic selector starts muted; choose a Windows input to include narration. Speakers and Mic have independent recording-volume sliders and can be recorded together. Keep CCTV visible and uncovered. MP4 is the usual choice. Media opens your output folder. Video records at 30 FPS. After Stop, review the preview, trim the yellow timeline handles, enable Crop picture if needed, and choose the export format. Export video saves your edits; Keep original or closing the export window keeps the full recording as MP4.')
+        QMessageBox.information(self,NAME,'Choose Full Screen 1, Full Screen 2, etc. to record that monitor, or Area for a floating recording frame. Choose Record all screens to save one video matching the Windows monitor layout. Gaps between monitors appear black. With one monitor, choose Full Screen. The screen numbers appear at the top of each monitor before recording. Click the bordered Save Location field to choose where recordings are saved.\n\nDrag anywhere inside the frame to move it. Drag any edge or corner to resize it. Move it to any monitor. The clear inside area is recorded. The border stays outside it, and the central guide disappears before recording.\n\nClick Start for a large 3-2-1 countdown over the capture area. The frame locks while recording. Stop with Ctrl + Shift + F10, the recorder Stop button.\n\nSpeakers follows the Windows playback device by default. The separate Mic selector starts muted; choose a Windows input to include narration. Speakers and Mic have independent recording-volume sliders and can be recorded together. Keep CCTV visible and uncovered. Choose MP4 for video with sound or GIF for a silent looping animation. Media opens your output folder. Video records at 30 FPS; GIF exports use 15 FPS. After Stop, review the preview, trim the yellow timeline handles, enable Crop picture if needed, and choose the export format. Export video or Export GIF saves your edits; Keep original or closing the export window keeps the full recording as MP4.')
     def connected_screens(self): return QApplication.screens()
     def is_area(self): return self.mode.currentData() is None
     def is_all_screens(self): return self.mode.currentData()==ALL_SCREENS
