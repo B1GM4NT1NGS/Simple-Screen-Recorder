@@ -38,15 +38,21 @@ class PreferencesTests(unittest.TestCase):
         window.audio.setCurrentIndex(window.audio.findData(0)); window.mic.setCurrentIndex(window.mic.findData(1)); window.close()
         self.devices.insert(0,('Another mic',False))
         restored=self.window()
-        self.assertEqual(restored.format.currentText(),'GIF'); self.assertEqual(restored.folder.text(),str(self.root/'videos'))
+        self.assertEqual(restored.format.currentText(),'MP4'); self.assertEqual(restored.folder.text(),str(self.root/'videos'))
         self.assertTrue(restored.is_area()); self.assertEqual(restored.frame.geometry(),QRect(40,60,420,280))
         self.assertEqual((restored.volume.value(),restored.mic_volume.value()),(23,67))
         self.assertEqual(restored.audio.currentData(),1); self.assertEqual(restored.mic.currentData(),2)
         self.assertTrue(restored.mic_volume.isEnabled())
     def test_selection_changes_are_saved_without_closing_or_recording(self):
-        window=self.window(); window.format.setCurrentText('MP4'); window.volume.setValue(41)
+        window=self.window(); window.format.setCurrentText('GIF'); window.volume.setValue(41)
         QTest.qWait(450)
-        data=read_preferences(self.path); self.assertEqual(data['format'],'MP4'); self.assertEqual(data['speaker_volume'],41)
+        data=read_preferences(self.path); self.assertNotIn('format',data); self.assertEqual(data['speaker_volume'],41)
+        self.assertEqual(window.format.currentText(),'GIF')
+    def test_previously_saved_format_never_overrides_mp4_on_startup(self):
+        for format in ['GIF','WebM','MKV','AVI']:
+            write_preferences(self.path,{'preferences_version':1,'format':format,'speaker_volume':29,'folder':str(self.root)})
+            window=self.window(); self.assertEqual(window.format.currentText(),'MP4')
+            self.assertEqual(window.volume.value(),29); self.assertEqual(window.folder.text(),str(self.root)); window.close()
     def test_disconnected_microphone_falls_back_to_mute_and_returns_when_reconnected(self):
         window=self.window(); window.mic.setCurrentIndex(window.mic.findData(1)); window.close()
         self.devices.pop(); restored=self.window(); self.assertIsNone(restored.mic.currentData())

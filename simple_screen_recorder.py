@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QLabel, QPush
     QVBoxLayout, QHBoxLayout, QMenu, QSlider, QListView, QStyledItemDelegate, QStyle)
 
 NAME = 'Simple Screen Recorder'
-VERSION = '1.1.5'
+VERSION = '1.1.6'
 COFFEE = 'https://buymeacoffee.com/bigzz'
 GITHUB = 'https://github.com/B1GM4NT1NGS/Simple-Screen-Recorder'
 CREATE_NO_WINDOW = 0x08000000
@@ -409,9 +409,8 @@ class MainWindow(QMainWindow):
         data=read_preferences(self.config)
         folder=data.get('folder')
         if isinstance(folder,str) and folder.strip(): self.folder.setText(folder)
-        # Older versions persisted format only when recording; start the new preferences at MP4.
-        format=data.get('format','MP4') if data.get('preferences_version')==1 else 'MP4'
-        self.format.setCurrentText(format if format in EXPORT_FORMATS else 'MP4')
+        # Format always starts at MP4, including when an older settings file contains GIF.
+        self.format.setCurrentText('MP4')
         self.volume.setValue(saved_integer(data.get('speaker_volume'),100,0,100)); self.mic_volume.setValue(saved_integer(data.get('mic_volume'),100,0,100))
         self._device_choices={kind:(data.get(kind) if isinstance(data.get(kind),dict) else default) for kind,default in [('speakers',{'kind':'default'}),('mic',{'kind':'mute'})]}
         for kind,combo in [('speakers',self.audio),('mic',self.mic)]: self.select_device(combo,self._device_choices[kind])
@@ -439,7 +438,7 @@ class MainWindow(QMainWindow):
         if self._restoring or self._closed: return
         capture={'kind':'area'} if self.is_area() else ({'kind':'all'} if self.is_all_screens() else {'kind':'screen','monitor':self.monitor_identity(self.mode.currentData())})
         frame=self.frame.geometry(); position=self.normalGeometry().topLeft() if self.isMinimized() else self.pos()
-        data={'preferences_version':1,'folder':self.folder.text(),'format':self.format.currentText(),'capture':capture,
+        data={'preferences_version':1,'folder':self.folder.text(),'capture':capture,
             'speakers':self._device_choices['speakers'],'mic':self._device_choices['mic'],'speaker_volume':self.volume.value(),'mic_volume':self.mic_volume.value(),
             'frame':[frame.x(),frame.y(),frame.width(),frame.height()],'window_position':[position.x(),position.y()]}
         try: write_preferences(self.config,data); self.settings_error=None
