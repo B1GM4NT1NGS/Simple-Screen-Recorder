@@ -12,7 +12,8 @@ A compact, local Windows screen recorder with a movable recording frame. Ideal f
 - **Area** shows a floating recording frame. The frame is a thin red dashed border with a central four-way move handle. Drag anywhere inside it to move between monitors; drag edges or corners to resize it.
 - Before recording, the whole clear centre can be dragged to position the frame. During recording, it passes mouse clicks through to your application. Only the area inside the frame is recorded; the border remains outside it. The central instruction and move handle disappear before recording starts.
 - MP4, MKV, AVI or WebM video output at 30 FPS, or a silent, looping animated GIF at 15 FPS. Choose GIF or MP4 in the recorder's Format selector, or change the format in the export window after recording.
-- **Speakers** defaults to the current Windows playback device, resolved afresh for each recording. **Mic** defaults to **Mute** and lists connected Windows input devices. Record speakers and a microphone together, either one alone, or a silent video. Each has its own recording-volume slider. The device lists refresh when opened.
+- On first launch, **Speakers** uses the current Windows playback device and **Mic** starts on **Mute**. The app then remembers your chosen sources and their separate recording-volume settings. Windows default devices are resolved afresh for each recording, and the device lists refresh when opened. Record speakers and a microphone together, either one alone, or a silent video.
+- **MP4** is the default when there is no saved preference. The app remembers your chosen format, save folder, capture mode/monitor, speaker and microphone sources, both volume sliders, recording-frame position/size and main-window position. Changes are saved locally without needing to start a recording. Format changes in the export window are remembered too. Missing audio devices fall back to Windows default playback or a muted microphone; disconnected monitor positions are recovered onto a connected screen.
 - Click the bordered path beside **Save Location:** to choose a save location. **Media** opens that folder.
 - A large 3-2-1 countdown appears over the selected capture area, then disappears before recording starts. The toolbar minimises while recording, and the frame locks to keep capture dimensions consistent.
 - Stop with **Ctrl + Shift + F10**, the recorder's Stop button.
@@ -23,7 +24,7 @@ A compact, local Windows screen recorder with a movable recording frame. Ideal f
 
 ## Download
 
-Download **Simple-Screen-Recorder-1.1.4.exe** from the [latest release](https://github.com/B1GM4NT1NGS/Simple-Screen-Recorder/releases/latest). No installation or Python is required.
+Download **Simple-Screen-Recorder-1.1.5.exe** from the [latest release](https://github.com/B1GM4NT1NGS/Simple-Screen-Recorder/releases/latest). No installation or Python is required.
 
 ## Run from source
 

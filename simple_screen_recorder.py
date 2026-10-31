@@ -6,6 +6,7 @@ from pathlib import Path
 from datetime import datetime
 from export_dialog import ExportDialog, EXPORT_FORMATS, TOOLTIP_STYLE, tooltip_text
 from windows_identity import TaskbarIdentity, set_process_identity
+from preferences import read_preferences, write_preferences, saved_integer, saved_geometry
 from PySide6.QtCore import Qt, QRect, QPoint, QTimer, QUrl, Signal, QObject, QAbstractNativeEventFilter
 from PySide6.QtGui import QPainter, QColor, QPen, QDesktopServices, QRegion, QIcon, QFont, QPalette, QFontMetrics
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QLabel, QPushButton,
@@ -13,7 +14,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QLabel, QPush
     QVBoxLayout, QHBoxLayout, QMenu, QSlider, QListView, QStyledItemDelegate, QStyle)
 
 NAME = 'Simple Screen Recorder'
-VERSION = '1.1.4'
+VERSION = '1.1.5'
 COFFEE = 'https://buymeacoffee.com/bigzz'
 GITHUB = 'https://github.com/B1GM4NT1NGS/Simple-Screen-Recorder'
 CREATE_NO_WINDOW = 0x08000000
@@ -316,13 +317,14 @@ class SaveLocationButton(QPushButton):
         p.drawText(self.rect().adjusted(40,0,-12,0),Qt.AlignVCenter|Qt.AlignLeft,text)
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self,config_path=None):
         super().__init__(); self.setWindowTitle(NAME); self.setWindowIcon(QIcon(asset_path('recorder.png'))); self.setFixedSize(1000,340)
         self._native_taskbar=None; self.taskbar_icon_error=None
+        self._restoring=True; self._closed=False; self.settings_error=None
         self.proc=None; self.audio_rec=None; self.mic_rec=None; self.region=None; self.pending=False; self.busy=False; self.last_file=None
         self.launch_scheduled=False; self.countdown=CountdownOverlay(); self.extra_countdowns=[]; self.capture_screens=None; self.screen_labels=[]; self.screen_connections=[]
         self.events=Events(); self.events.finished.connect(self.completed)
-        self.config=Path(os.environ.get('APPDATA',str(Path.home()))) / 'SimpleScreenRecorder' / 'settings.json'
+        self.config=Path(config_path) if config_path is not None else Path(os.environ.get('APPDATA',str(Path.home()))) / 'SimpleScreenRecorder' / 'settings.json'
         self.frame=CaptureFrame(); self.frame.changed.connect(self.update_frame_label)
         self.frame.stop_requested.connect(self.toggle)
         self.setStyleSheet('QWidget{background:#f4f6f9;color:#454b54;font:14px "Segoe UI";} QPushButton,QComboBox{background:#f8f9fb;border:1px solid white;border-radius:12px;padding:8px;} QPushButton:hover{background:#e7edf5;} QComboBox QAbstractItemView{background:white;border:1px solid #dce2ea;selection-background-color:#edf1f7;selection-color:#333d4b;padding:6px;} QPushButton#record{background:#ff705b;color:white;font-size:30px;border:6px solid #ffe6df;border-radius:66px;} QPushButton#coffee{background:#ffdd70;border:0;border-radius:9px;font-size:13px;padding:8px 14px;} QLabel#status{color:#737c88;font-size:13px;} QPushButton#footer{border:0;background:white;color:#606976;font-size:14px;padding:10px 12px;}'+TOOLTIP_STYLE)
@@ -361,17 +363,87 @@ class MainWindow(QMainWindow):
         self.select=QPushButton(); self.select.hide(); self.target=QLabel(); self.target.hide()
         self.audio.currentIndexChanged.connect(self.update_audio_controls); self.mic.currentIndexChanged.connect(self.update_audio_controls); self.update_audio_controls()
         self.audio.opening.connect(self.refresh_audio_devices); self.mic.opening.connect(self.refresh_audio_devices)
-        try:
-            data=json.loads(self.config.read_text()); self.folder.setText(data['folder']); self.format.setCurrentText(data.get('format','MP4'))
-        except (OSError,ValueError,KeyError): pass
-        self.update_save_location()
         self.mode.currentIndexChanged.connect(self.mode_changed); self.refresh_screens()
+        self.restore_preferences()
+        self.update_save_location()
+        self.preferences_timer=QTimer(self); self.preferences_timer.setSingleShot(True); self.preferences_timer.setInterval(300); self.preferences_timer.timeout.connect(self.save_preferences)
+        for combo in [self.mode,self.format]: combo.currentIndexChanged.connect(self.schedule_preferences)
+        for kind,combo in [('speakers',self.audio),('mic',self.mic)]:
+            combo.currentIndexChanged.connect(lambda index,kind=kind:self.audio_preference_changed(kind))
+            combo.activated.connect(lambda index,kind=kind:self.audio_preference_changed(kind))
+        self.folder.textChanged.connect(self.schedule_preferences)
+        self.volume.valueChanged.connect(self.schedule_preferences); self.mic_volume.valueChanged.connect(self.schedule_preferences)
+        self.frame.changed.connect(self.schedule_preferences); self._restoring=False
         QApplication.instance().screenAdded.connect(self.refresh_screens); QApplication.instance().screenRemoved.connect(self.refresh_screens)
         self.timer=QTimer(self); self.timer.timeout.connect(self.tick); self.timer.start(250)
         self.hotkey=bool(ctypes.windll.user32.RegisterHotKey(None,0x5352,0x4000|0x0002|0x0004,0x79))
         self.hotkey_filter=HotkeyFilter(self); QApplication.instance().installNativeEventFilter(self.hotkey_filter)
         if not self.hotkey: self.status.setText('Use Stop button')
         self.update_space()
+    def schedule_preferences(self,*args):
+        if not getattr(self,'_restoring',True) and not self._closed and hasattr(self,'preferences_timer'): self.preferences_timer.start()
+    def moveEvent(self,event):
+        super().moveEvent(event); self.schedule_preferences()
+    def device_choice(self,combo):
+        value=combo.currentData()
+        if value is None: return {'kind':'mute'}
+        if value in [DEFAULT_AUDIO,DEFAULT_MIC]: return {'kind':'default'}
+        return {'kind':'device','name':combo.currentData(Qt.UserRole+2) or combo.currentText()}
+    def select_device(self,combo,choice):
+        choice=choice if isinstance(choice,dict) else {}
+        kind=choice.get('kind'); index=-1
+        if kind=='mute': index=combo.findData(None)
+        elif kind=='default': index=combo.findData(DEFAULT_AUDIO if combo is self.audio else DEFAULT_MIC)
+        elif kind=='device' and isinstance(choice.get('name'),str):
+            index=next((i for i in range(combo.count()) if combo.itemData(i,Qt.UserRole+2)==choice['name']),-1)
+        combo.blockSignals(True); combo.setCurrentIndex(index if index>=0 else 0); combo.blockSignals(False); combo.update()
+    def audio_preference_changed(self,kind):
+        if self._restoring: return
+        self._device_choices[kind]=self.device_choice(self.audio if kind=='speakers' else self.mic); self.schedule_preferences()
+    def monitor_identity(self,screen):
+        values={}
+        for key,method in [('name','name'),('serial','serialNumber')]:
+            value=getattr(screen,method,lambda:'')(); values[key]=value if isinstance(value,str) else ''
+        return values
+    def restore_preferences(self):
+        data=read_preferences(self.config)
+        folder=data.get('folder')
+        if isinstance(folder,str) and folder.strip(): self.folder.setText(folder)
+        # Older versions persisted format only when recording; start the new preferences at MP4.
+        format=data.get('format','MP4') if data.get('preferences_version')==1 else 'MP4'
+        self.format.setCurrentText(format if format in EXPORT_FORMATS else 'MP4')
+        self.volume.setValue(saved_integer(data.get('speaker_volume'),100,0,100)); self.mic_volume.setValue(saved_integer(data.get('mic_volume'),100,0,100))
+        self._device_choices={kind:(data.get(kind) if isinstance(data.get(kind),dict) else default) for kind,default in [('speakers',{'kind':'default'}),('mic',{'kind':'mute'})]}
+        for kind,combo in [('speakers',self.audio),('mic',self.mic)]: self.select_device(combo,self._device_choices[kind])
+        self.update_audio_controls()
+        geometry=saved_geometry(data.get('frame'))
+        if geometry:
+            rect=QRect(*geometry); screens=self.connected_screens()
+            if not any(rect.intersected(screen.geometry()).width()>=64 and rect.intersected(screen.geometry()).height()>=40 for screen in screens):
+                available=QApplication.primaryScreen().availableGeometry(); rect.setSize(rect.size().boundedTo(available.size())); rect.moveCenter(available.center())
+            self.frame.setGeometry(rect)
+        capture=data.get('capture'); capture=capture if isinstance(capture,dict) else {}; kind=capture.get('kind')
+        if kind=='area': self.mode.setCurrentIndex(self.mode.count()-1)
+        elif kind=='all' and self.mode.findData(ALL_SCREENS)>=0: self.mode.setCurrentIndex(self.mode.findData(ALL_SCREENS))
+        elif kind=='screen' and isinstance(capture.get('monitor'),dict):
+            wanted=capture['monitor']; screens=self.connected_screens()
+            identities=[self.monitor_identity(screen) for screen in screens]
+            index=next((i for i,identity in enumerate(identities) if wanted.get('serial') and identity['serial']==wanted['serial']),-1)
+            if index<0: index=next((i for i,identity in enumerate(identities) if wanted.get('name') and identity['name']==wanted['name']),0)
+            self.mode.setCurrentIndex(index)
+        position=data.get('window_position')
+        if isinstance(position,list) and len(position)==2 and all(type(v) is int and abs(v)<=200000 for v in position):
+            rect=QRect(QPoint(*position),self.size())
+            if any(rect.intersected(screen.availableGeometry()).width()>=100 and rect.intersected(screen.availableGeometry()).height()>=40 for screen in self.connected_screens()): self.move(rect.topLeft())
+    def save_preferences(self):
+        if self._restoring or self._closed: return
+        capture={'kind':'area'} if self.is_area() else ({'kind':'all'} if self.is_all_screens() else {'kind':'screen','monitor':self.monitor_identity(self.mode.currentData())})
+        frame=self.frame.geometry(); position=self.normalGeometry().topLeft() if self.isMinimized() else self.pos()
+        data={'preferences_version':1,'folder':self.folder.text(),'format':self.format.currentText(),'capture':capture,
+            'speakers':self._device_choices['speakers'],'mic':self._device_choices['mic'],'speaker_volume':self.volume.value(),'mic_volume':self.mic_volume.value(),
+            'frame':[frame.x(),frame.y(),frame.width(),frame.height()],'window_position':[position.x(),position.y()]}
+        try: write_preferences(self.config,data); self.settings_error=None
+        except OSError as error: self.settings_error=str(error)
     def showEvent(self,event):
         super().showEvent(event)
         if QApplication.platformName()=='windows' and self._native_taskbar is None:
@@ -479,6 +551,7 @@ class MainWindow(QMainWindow):
                         name=d['name'].replace(' [Loopback]','').strip(); key=(kind,name); counts[key]=counts.get(key,0)+1
                         suffix=f' ({counts[key]})' if counts[key]>1 else ''
                         combo.addItem(name+suffix,i); combo.setItemData(combo.count()-1,kind,Qt.UserRole+1); combo.setItemData(combo.count()-1,tooltip_text(d['name']),Qt.ToolTipRole)
+                        combo.setItemData(combo.count()-1,str(d['name']),Qt.UserRole+2)
                         if kind=='Microphone': inputs.append(i)
                 if inputs:
                     self.mic.insertItem(1,'Windows default input device',DEFAULT_MIC); self.mic.setItemData(1,'Windows default',Qt.UserRole+1)
@@ -486,13 +559,11 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.audio.setToolTip(tooltip_text('Speaker audio unavailable: '+str(e))); self.mic.setToolTip(tooltip_text('Microphone input unavailable: '+str(e)))
     def refresh_audio_devices(self):
-        previous=[(combo.currentData(),combo.currentText()) for combo in [self.audio,self.mic]]
+        previous=[self._device_choices[kind] for kind in ['speakers','mic']]
         for combo in [self.audio,self.mic]: combo.blockSignals(True); combo.clear()
         self.audio.addItem('Windows default playback device',DEFAULT_AUDIO); self.audio.setItemData(0,'Windows default',Qt.UserRole+1); self.audio.addItem('Mute',None)
         self.mic.addItem('Mute',None); self.populate_audio()
-        for combo,(data,text) in zip([self.audio,self.mic],previous):
-            index=combo.findData(data) if not isinstance(data,int) else combo.findText(text)
-            combo.setCurrentIndex(index if index>=0 else 0); combo.blockSignals(False); combo.update()
+        for combo,choice in zip([self.audio,self.mic],previous): self.select_device(combo,choice)
         self.update_audio_controls()
     def toggle(self):
         if self.busy: return
@@ -503,7 +574,7 @@ class MainWindow(QMainWindow):
             self.refresh_audio_devices()
             rect=self.get_rect(); self.region=rect; self.capture_screens=self.screen_rects() if self.is_all_screens() else None; folder=Path(self.folder.text()).expanduser(); folder.mkdir(parents=True,exist_ok=True)
             with tempfile.TemporaryFile(dir=folder): pass
-            self.config.parent.mkdir(parents=True,exist_ok=True); self.config.write_text(json.dumps({'folder':str(folder),'format':self.format.currentText(),'fps':self.fps.currentText()}))
+            self.save_preferences()
             self.deadline=time.monotonic()+self.delay.value(); self.pending=True; self.launch_scheduled=False; self.lock(True); self.record.setText('Cancel')
             if self.delay.value()>0: self.show_countdown(self.delay.value())
         except Exception as e: QMessageBox.warning(self,NAME,str(e))
@@ -586,9 +657,11 @@ class MainWindow(QMainWindow):
         else:
             self.frame.hide()
             try:
-                dialog=ExportDialog(path,self.output,self.format.currentText(),ffmpeg_exe(),self); self.export_dialog=dialog; dialog.exec()
+                dialog=ExportDialog(path,self.output,self.format.currentText(),ffmpeg_exe(),self); self.export_dialog=dialog
+                dialog.format.currentTextChanged.connect(self.format.setCurrentText); dialog.exec()
                 if dialog.saved_path:
                     self.last_file=dialog.saved_path; self.status.setText('Saved'); self.status.setToolTip(tooltip_text(dialog.saved_path))
+                    self.folder.setText(str(Path(dialog.saved_path).parent)); self.update_save_location(); self.save_preferences()
                     try: self.scratch.cleanup()
                     except OSError: self.scratch._finalizer.detach()
                 else: self.scratch._finalizer.detach(); self.status.setText('Recording retained'); self.status.setToolTip(tooltip_text(path))
@@ -602,6 +675,7 @@ class MainWindow(QMainWindow):
         if self.proc:
             self.stop(); e.ignore(); return
         if self.pending: self.pending=False
+        self.preferences_timer.stop(); self.save_preferences(); self._closed=True
         if self.hotkey: ctypes.windll.user32.UnregisterHotKey(None,0x5352)
         QApplication.instance().removeNativeEventFilter(self.hotkey_filter)
         self.frame.close()

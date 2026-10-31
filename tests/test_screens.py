@@ -1,4 +1,4 @@
-import os, sys, unittest
+import os, sys, unittest, tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
 os.environ['QT_QPA_PLATFORM']='offscreen'
@@ -11,10 +11,11 @@ class ScreenTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls): cls.app=QApplication.instance() or QApplication([])
     def setUp(self):
-        with patch.object(MainWindow,'populate_audio'): self.window=MainWindow()
+        self.settings_folder=tempfile.TemporaryDirectory()
+        with patch.object(MainWindow,'populate_audio'): self.window=MainWindow(config_path=Path(self.settings_folder.name)/'settings.json')
         self.screens=[]
         self.window.connected_screens=lambda:self.screens
-    def tearDown(self): self.window.close()
+    def tearDown(self): self.window.close(); self.settings_folder.cleanup()
     def connect(self,count):
         self.screens=[Mock(geometry=Mock(return_value=QRect((i-1)*1920,0,1920,1080))) for i in range(count)]
         self.window.refresh_screens()

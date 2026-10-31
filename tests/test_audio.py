@@ -1,4 +1,4 @@
-import sys, unittest
+import sys, unittest, tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
@@ -8,6 +8,8 @@ from PySide6.QtWidgets import QApplication
 class AudioTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls): cls.app=QApplication.instance() or QApplication([])
+    def setUp(self): self.settings_folder=tempfile.TemporaryDirectory()
+    def tearDown(self): self.settings_folder.cleanup()
     def test_windows_default_resolved_again_for_each_recording(self):
         first, second=Mock(), Mock()
         for client,index in [(first,12),(second,15)]:
@@ -39,7 +41,7 @@ class AudioTests(unittest.TestCase):
             {'index':3,'name':'USB Mic (legacy duplicate)','maxInputChannels':1,'hostApi':0,'isLoopbackDevice':False}]
         client.get_device_count.return_value=len(devices); client.get_device_info_by_index.side_effect=lambda i:devices[i]; client.__enter__=Mock(return_value=client); client.__exit__=Mock(return_value=False)
         with patch('pyaudiowpatch.PyAudio',return_value=client):
-            window=MainWindow()
+            window=MainWindow(config_path=Path(self.settings_folder.name)/'settings.json')
             try:
                 self.assertIsNone(window.mic.currentData()); self.assertFalse(window.mic_volume.isEnabled())
                 self.assertEqual([window.mic.itemText(i) for i in range(window.mic.count())],['Mute','Windows default input device','USB Mic','Line In'])
